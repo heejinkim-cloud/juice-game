@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>과일 주스 타이쿤: 최종 에디션</title>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #1a1a2e; font-family: 'Malgun Gothic', sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; color: #333; overflow: hidden; user-select: none;
+        }
+
+        #game-wrapper {
+            position: relative; width: 450px; height: 700px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            border-radius: 10px; overflow: hidden; background-color: #8B5A2B;
+        }
+
+        /* 상단 UI */
+        #top-ui {
+            position: absolute; top: 0; left: 0; width: 100%;
+            background-color: rgba(30, 39, 46, 0.95); color: white; z-index: 10;
+            display: flex; flex-direction: column; border-bottom: 3px solid #f39c12;
+            transition: background-color 0.3s;
+        }
+        
+        .fever-ui { background-color: rgba(192, 57, 43, 0.95) !important; border-bottom: 3px solid #f1c40f !important; }
+
+        #status-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 20px; font-weight: bold; font-size: 18px;
+        }
+
+        #timer { color: #e74c3c; font-size: 22px; }
+        .fever-timer { color: #f1c40f !important; animation: pulse 0.5s infinite alternate; }
+        
+        #score-container { display: flex; flex-direction: column; align-items: flex-end; }
+        #combo-text { color: #f1c40f; font-size: 14px; opacity: 0; transition: opacity 0.2s;}
+
+        #fever-banner {
+            position: absolute; top: 120px; left: 50%; transform: translateX(-50%) scale(0);
+            color: #fff; font-size: 36px; font-weight: 900; font-style: italic;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.5), 0 0 20px #f1c40f;
+            z-index: 5; pointer-events: none; opacity: 0;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+        }
+        .fever-active { transform: translateX(-50%) scale(1) rotate(-5deg) !important; opacity: 1 !important; }
+
+        @keyframes pulse { 0% { transform: scale(1); } 100% { transform: scale(1.1); } }
+
+        #order-board {
+            display: flex; padding: 10px 15px; gap: 12px; overflow-x: auto; min-height: 70px; align-items: center;
+        }
+
+        .order-item { display: flex; flex-direction: column; align-items: center; animation: popIn 0.3s ease-out; }
+        .juice-cup {
+            width: 24px; height: 36px; border: 2px solid #ecf0f1; border-top: none;
+            border-radius: 0 0 6px 6px; position: relative; background: rgba(255,255,255,0.2); overflow: hidden; margin-bottom: 4px;
+        }
+        .juice-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 85%; }
+        .juice-cup::before { content: ''; position: absolute; top: -8px; right: 4px; width: 3px; height: 15px; background: #fff; transform: rotate(20deg); }
+        .order-name { font-size: 11px; font-weight: bold; color: #ecf0f1; }
+
+        @keyframes popIn { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 20; text-align: center;
+        }
+        .overlay h1 { font-size: 34px; margin-bottom: 10px; color: #f1c40f; text-shadow: 2px 2px 4px #000; }
+        .overlay p { font-size: 15px; margin-bottom: 25px; line-height: 1.6; color: #ddd; }
+        .btn {
+            padding: 12px 30px; font-size: 20px; font-weight: bold;
+            background: linear-gradient(135deg, #f39c12, #d35400); border: none; border-radius: 8px;
+            color: white; cursor: pointer; transition: transform 0.1s; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .btn:active { transform: translateY(2px); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        #game-over { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <div id="top-ui">
+        <div id="status-bar">
+            <div>Time: <span id="timer">120</span>s</div>
+            <div id="score-container">
+                <div>Score: <span id="score">0</span></div>
+                <div id="combo-text">Combo x2!</div>
+            </div>
+        </div>
+        <div id="order-board"></div>
+    </div>
+    
+    <div id="fever-banner">FEVER TIME!</div>
+    <canvas id="gameCanvas" width="450" height="700"></canvas>
+    
+    <div id="start-screen" class="overlay">
+        <h1>과일 주스 타이쿤</h1>
+        <p>🎯 화면 <strong>하단 1/3 (컨트롤 존)</strong> 클릭으로 과일 발사!<br>⏳ 발사 후 <strong>0.5초 쿨타임</strong>이 존재합니다.<br>🌟 점수를 모아 <strong>가게를 진화</strong>시키세요!<br><br>🍹 과일을 합쳐 주문서를 완성하면 점수 획득!</p>
+        <button class="btn" id="start-btn">영업 시작 (소리 켬)</button>
+    </div>
+
+    <div id="game-over" class="overlay">
+        <h1>영업 종료!</h1>
+        <p>최종 점수: <span id="final-score" style="font-size: 28px; color: #f1c40f; font-weight:bold;">0</span><br>
+           최고 점수: <span id="best-score" style="color: #2ecc71;">0</span>
+        </p>
+        <button class="btn" id="restart-btn">다시 영업하기</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const topUI = document.getElementById('top-ui');
+    const orderBoard = document.getElementById('order-board');
+    const scoreElement = document.getElementById('score');
+    const timerElement = document.getElementById('timer');
+    const comboText = document.getElementById('combo-text');
+    const feverBanner = document.getElementById('fever-banner');
+
+    /* --- Web Audio API --- */
+    let audioCtx; let isBgmPlaying = false; let bgmInterval;
+    
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    const melody = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63, 293.66, 349.23, 440.00, 587.33, 440.00, 349.23];
+    let noteIndex = 0;
+
+    function playBGM() {
+        if(isBgmPlaying) return; isBgmPlaying = true;
+        bgmInterval = setInterval(() => {
+            if(!audioCtx || audioCtx.state !== 'running') return;
+            let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
+            osc.type = 'triangle'; osc.frequency.value = melody[noteIndex % melody.length] * (isFever ? 1.5 : 1);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.15); noteIndex++;
+        }, 150);
+    }
+    function stopBGM() { isBgmPlaying = false; clearInterval(bgmInterval); }
+
+    function playSound(type, param) {
+        if(!audioCtx) return;
+        let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+
+        if(type === 'hit') {
+            osc.type = 'square'; osc.frequency.setValueAtTime(750 - (param * 150), audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        } else if(type === 'merge') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        } else if(type === 'juice') {
+            [600, 800, 1000, 1200].forEach((freq, i) => {
+                setTimeout(() => {
+                    let o = audioCtx.createOscillator(); let g = audioCtx.createGain();
+                    o.type = 'sine'; o.frequency.value = freq;
+                    g.gain.setValueAtTime(0.1, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.3);
+                }, i * 50);
+            });
+        } else if(type === 'levelup') {
+            // 레벨업 빰빠밤 사운드
+            [440, 554.37, 659.25, 880].forEach((freq, i) => {
+                setTimeout(() => {
+                    let o = audioCtx.createOscillator(); let g = audioCtx.createGain();
+                    o.type = 'square'; o.frequency.value = freq;
+                    g.gain.setValueAtTime(0.15, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.4);
+                }, i * 150);
+            });
+        }
+    }
+
+    /* --- 게임 데이터 --- */
+    const FRUIT_TYPES = {
+        1: { name: '블루베리', color: '#8e44ad', baseRadius: 18, mass: 1 },
+        2: { name: '귤', color: '#f39c12', baseRadius: 30, mass: 2 },
+        3: { name: '사과', color: '#c0392b', baseRadius: 45, mass: 3 },
+        4: { name: '멜론', color: '#2ecc71', baseRadius: 65, mass: 4 }
+    };
+
+    let fruits = []; let orders = []; let particles = []; let envParticles = [];
+    let score = 0; let combo = 0; let lastJuiceTime = 0;
+    let timeLeft = 120; let isPlaying = false; let shakeFrames = 0;
+    let isFever = false; let feverTimeLeft = 0;
+    let storeLevel = 1; // 가게 레벨
+    let bestScore = localStorage.getItem('juiceBestScore') || 0;
+
+    // 조작 및 쿨타임
+    const LAUNCHER_X = canvas.width / 2;
+    const LAUNCHER_Y = canvas.height - 30;
+    const CONTROL_ZONE_Y = canvas.height * (2 / 3);
+    const COOLDOWN_MS = 500;
+    let lastShootTime = 0;
+
+    function getScale(y) { return Math.max(0.3, Math.min(0.4 + (y / canvas.height) * 0.6, 1.0)); }
+
+    class Fruit {
+        constructor(x, y, level, vx = 0, vy = 0) {
+            this.x = x; this.y = y; this.level = level;
+            this.vx = vx; this.vy = vy; this.merged = false;
+        }
+        get radius() { return FRUIT_TYPES[this.level].baseRadius * getScale(this.y); }
+        get mass() { return FRUIT_TYPES[this.level].mass; }
+
+        draw() {
+            const scale = getScale(this.y); const r = this.radius; const type = FRUIT_TYPES[this.level];
+            ctx.save(); ctx.translate(this.x, this.y);
+            ctx.beginPath(); ctx.ellipse(0, r * 0.8, r * 0.9, r * 0.3, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fillStyle = type.color; ctx.fill();
+
+            if (this.level === 1) { 
+                ctx.beginPath(); ctx.arc(0, -r*0.6, r*0.2, 0, Math.PI*2); ctx.fillStyle = '#5e3370'; ctx.fill();
+            } else if (this.level === 2) { 
+                ctx.fillStyle = '#27ae60'; ctx.beginPath(); ctx.ellipse(r*0.2, -r*0.9, r*0.4, r*0.15, Math.PI/6, 0, Math.PI*2); ctx.fill();
+            } else if (this.level === 3) { 
+                ctx.lineWidth = 3*scale; ctx.strokeStyle = '#5c4033'; ctx.beginPath(); ctx.moveTo(0, -r*0.8); ctx.lineTo(r*0.2, -r*1.2); ctx.stroke();
+                ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.ellipse(r*0.4, -r*1.0, r*0.4, r*0.2, Math.PI/4, 0, Math.PI*2); ctx.fill();
+            } else if (this.level === 4) { 
+                ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 3*scale;
+                for(let i=0; i<3; i++) { ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI/2 + i*0.5, Math.PI/2 + i*0.5); ctx.stroke(); }
+                ctx.fillStyle = '#7f8c8d'; ctx.fillRect(-r*0.1, -r*1.1, r*0.2, r*0.3);
+            }
+            ctx.beginPath(); ctx.arc(-r*0.3, -r*0.3, r*0.2, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
+            ctx.restore();
+        }
+
+        update() {
+            this.vx *= 0.985; this.vy *= 0.985;
+            if (Math.abs(this.vx) < 0.05) this.vx = 0; if (Math.abs(this.vy) < 0.05) this.vy = 0;
+            this.x += this.vx; this.y += this.vy;
+
+            const r = this.radius; let hit = false;
+            if (this.x - r < 0) { this.x = r; this.vx *= -0.8; hit = true; }
+            else if (this.x + r > canvas.width) { this.x = canvas.width - r; this.vx *= -0.8; hit = true; }
+            if (this.y - r < 90) { this.y = 90 + r; this.vy *= -0.8; hit = true; }
+            else if (this.y + r > canvas.height) { this.y = canvas.height - r; this.vy *= -0.8; }
+            
+            if(hit && Math.abs(this.vx) > 1) playSound('hit', this.level);
+        }
+    }
+
+    // 발사 이벤트 (쿨타임 및 제한 구역 적용)
+    canvas.addEventListener('mousedown', (e) => {
+        if (!isPlaying) return;
+        const now = Date.now();
+        
+        // 1. 쿨타임 체크 (0.5초)
+        if (now - lastShootTime < COOLDOWN_MS) return; 
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // 2. 컨트롤 존 제한
+        if (mouseY < CONTROL_ZONE_Y) return; 
+
+        lastShootTime = now; // 발사 시간 기록
+
+        const dx = mouseX - LAUNCHER_X;
+        const dy = mouseY - LAUNCHER_Y;
+        const angle = Math.atan2(dy, dx);
+
+        const speed = isFever ? 30 : 25; 
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(Math.min(-0.1, angle)) * speed;
+        
+        fruits.push(new Fruit(LAUNCHER_X, LAUNCHER_Y, 1, vx, vy));
+    });
+
+    function maintainOrders() {
+        while(orders.length < 4) { orders.push(Math.floor(Math.random() * 3) + 2); }
+        renderOrders();
+    }
+
+    function renderOrders() {
+        orderBoard.innerHTML = '';
+        orders.forEach(level => {
+            const item = document.createElement('div'); item.className = 'order-item';
+            const cup = document.createElement('div'); cup.className = 'juice-cup';
+            const fill = document.createElement('div'); fill.className = 'juice-fill';
+            fill.style.backgroundColor = FRUIT_TYPES[level].color; cup.appendChild(fill);
+            const name = document.createElement('div'); name.className = 'order-name'; name.innerText = FRUIT_TYPES[level].name;
+            item.appendChild(cup); item.appendChild(name); orderBoard.appendChild(item);
+        });
+    }
+
+    function resolveCollisions() {
+        for (let i = 0; i < fruits.length; i++) {
+            for (let j = i + 1; j < fruits.length; j++) {
+                let a = fruits[i]; let b = fruits[j];
+                if (a.merged || b.merged) continue;
+                let dx = b.x - a.x; let dy = b.y - a.y;
+                let dist = Math.sqrt(dx * dx + dy * dy); let minDist = a.radius + b.radius;
+
+                if (dist < minDist) {
+                    if (a.level === b.level) {
+                        a.merged = true; b.merged = true; handleMerge(a, b); continue;
+                    }
+                    let overlap = minDist - dist; let nx = dx / dist; let ny = dy / dist;
+                    let correction = overlap / 2;
+                    a.x -= nx * correction; a.y -= ny * correction; b.x += nx * correction; b.y += ny * correction;
+
+                    let kx = (a.vx - b.vx); let ky = (a.vy - b.vy);
+                    let p = 2.0 * (nx * kx + ny * ky) / (a.mass + b.mass);
+                    const restitution = 0.6; 
+                    a.vx -= p * b.mass * nx * restitution; a.vy -= p * b.mass * ny * restitution;
+                    b.vx += p * a.mass * nx * restitution; b.vy += p * a.mass * ny * restitution;
+                    
+                    if(Math.abs(p) > 5) playSound('hit', Math.min(a.level, b.level));
+                }
+            }
+        }
+    }
+
+    function handleMerge(a, b) {
+        let midX = (a.x + b.x) / 2; let midY = (a.y + b.y) / 2;
+        if (a.level === 4) {
+            addScore(2000, midX, midY, "수박 팡!", "#e74c3c"); triggerShake(15); playSound('merge'); createConfetti(midX, midY, "#e74c3c");
+        } else {
+            let nextLevel = a.level + 1; let orderIndex = orders.indexOf(nextLevel);
+            if (orderIndex !== -1) {
+                orders.splice(orderIndex, 1); maintainOrders();
+                let now = Date.now();
+                if (now - lastJuiceTime < 4000 || isFever) { combo++; } else { combo = 1; }
+                lastJuiceTime = now;
+                if (combo >= 3 && !isFever) activateFever();
+
+                let multiplier = (1 + (combo * 0.2)) * (isFever ? 2 : 1);
+                let earnedScore = Math.floor(nextLevel * 300 * multiplier);
+                
+                addScore(earnedScore, midX, midY, isFever? `FEVER! +${earnedScore}` : `Juice! +${earnedScore}`, FRUIT_TYPES[nextLevel].color);
+                showComboUI(); triggerShake(15); createConfetti(midX, midY, FRUIT_TYPES[nextLevel].color); playSound('juice');
+            } else {
+                addScore(nextLevel * 100, midX, midY, "Merge!", "#ecf0f1");
+                fruits.push(new Fruit(midX, midY, nextLevel, (a.vx+b.vx)/2, (a.vy+b.vy)/2));
+                triggerShake(3); playSound('merge');
+            }
+        }
+    }
+
+    function activateFever() {
+        isFever = true; feverTimeLeft = 10;
+        topUI.classList.add('fever-ui'); timerElement.classList.add('fever-timer'); feverBanner.classList.add('fever-active'); playSound('juice');
+    }
+    function deactivateFever() {
+        isFever = false; combo = 0;
+        topUI.classList.remove('fever-ui'); timerElement.classList.remove('fever-timer'); feverBanner.classList.remove('fever-active');
+    }
+
+    // 레벨 업 확인 및 텍스트 이펙트
+    function checkLevelUp() {
+        let newLevel = 1;
+        if (score >= 15000) newLevel = 3;
+        else if (score >= 5000) newLevel = 2;
+
+        if (newLevel > storeLevel) {
+            storeLevel = newLevel;
+            playSound('levelup');
+            // 대형 레벨업 텍스트 파티클
+            particles.push({ type: 'levelup', x: canvas.width/2, y: canvas.height/2, life: 90, scale: 0 });
+            triggerShake(20);
+            for(let i=0; i<30; i++) createConfetti(canvas.width/2, canvas.height/2 + 50, ['#f1c40f', '#3498db', '#e74c3c', '#9b59b6'][Math.floor(Math.random()*4)]);
+        }
+    }
+
+    function addScore(points, x, y, text, color) {
+        score += points; scoreElement.innerText = score; 
+        particles.push({ type: 'text', x, y, text, color, life: 50, vy: -1.5 });
+        checkLevelUp();
+    }
+    
+    function createConfetti(x, y, color) {
+        particles.push({ type: 'confetti', x, y, color, life: 30 + Math.random()*30, vx: (Math.random() - 0.5) * 15, vy: (Math.random() - 0.5) * 15 });
+    }
+    function triggerShake(intensity) { shakeFrames = intensity; }
+    function showComboUI() {
+        if(combo > 1) { comboText.innerText = `Combo x${combo}!`; comboText.style.opacity = 1; setTimeout(() => { comboText.style.opacity = 0; }, 2000); }
+    }
+
+    // 진화하는 가게 배경 그리기
+    function drawBackground() {
+        // Lv.1: 기본 나무 바닥
+        let bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        bgGrad.addColorStop(0, isFever ? '#c0392b' : (storeLevel >= 2 ? '#2c3e50' : '#A0522D')); 
+        bgGrad.addColorStop(1, isFever ? '#8e44ad' : (storeLevel >= 3 ? '#1a1a2e' : '#8B5A2B'));
+        ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 기본 나무 결
+        ctx.strokeStyle = storeLevel >= 3 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.1)'; 
+        ctx.lineWidth = 2;
+        for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke(); }
+
+        // Lv.1: 기본 상단 천막
+        if (storeLevel === 1) {
+            let awWidth = 45;
+            for(let i=0; i<canvas.width; i+=awWidth) {
+                ctx.fillStyle = (i / awWidth) % 2 === 0 ? '#e74c3c' : '#ecf0f1';
+                ctx.beginPath(); ctx.arc(i + awWidth/2, 70, awWidth/2, 0, Math.PI); ctx.fill(); ctx.fillRect(i, 0, awWidth, 70);
+            }
+        }
+
+        // Lv.2: 인테리어 추가 (따뜻한 조명, 화분, 고급 커튼)
+        if (storeLevel >= 2) {
+            // 커튼
+            ctx.fillStyle = '#c0392b';
+            ctx.beginPath(); ctx.moveTo(0, 70); ctx.quadraticCurveTo(50, 200, 0, 350); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(canvas.width, 70); ctx.quadraticCurveTo(canvas.width-50, 200, canvas.width, 350); ctx.fill();
+            
+            // 따뜻한 무드등 (양옆)
+            ctx.fillStyle = 'rgba(241, 196, 15, 0.15)';
+            ctx.beginPath(); ctx.arc(0, 150, 100, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(canvas.width, 150, 100, 0, Math.PI*2); ctx.fill();
+
+            // 구석 화분
+            ctx.fillStyle = '#8e44ad'; ctx.fillRect(30, 120, 25, 30); // 화분
+            ctx.fillStyle = '#27ae60'; ctx.beginPath(); ctx.arc(42, 110, 20, 0, Math.PI*2); ctx.fill(); // 잎사귀
+            ctx.beginPath(); ctx.arc(32, 100, 15, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(52, 100, 15, 0, Math.PI*2); ctx.fill();
+        }
+
+        // Lv.3: 고급 바 (네온사인, 흩날리는 파티클)
+        if (storeLevel >= 3) {
+            // 네온사인
+            ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'center';
+            let glow = Math.sin(Date.now() / 200) * 10 + 15;
+            ctx.shadowBlur = glow; ctx.shadowColor = '#f1c40f';
+            ctx.fillStyle = '#fff';
+            ctx.fillText('JUICE BAR', canvas.width/2, 110);
+            ctx.shadowBlur = 0; // 초기화
+            
+            // 떠다니는 배경 파티클
+            if(Math.random() < 0.1) envParticles.push({x: Math.random()*canvas.width, y: 70, size: Math.random()*3+1, life: 100});
+            for(let i=envParticles.length-1; i>=0; i--) {
+                let p = envParticles[i];
+                ctx.fillStyle = `rgba(241, 196, 15, ${p.life/100})`;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+                p.y += 1; p.life--; if(p.life <= 0) envParticles.splice(i, 1);
+            }
+        }
+        
+        // 컨트롤 존 표시
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.fillRect(0, CONTROL_ZONE_Y, canvas.width, canvas.height - CONTROL_ZONE_Y);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(0, CONTROL_ZONE_Y); ctx.lineTo(canvas.width, CONTROL_ZONE_Y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('▼ Control Zone ▼', canvas.width / 2, CONTROL_ZONE_Y + 15);
+    }
+
+    // 0.5초 쿨타임 게이지 UI 그리기
+    function drawCooldownGauge() {
+        let elapsed = Date.now() - lastShootTime;
+        let progress = Math.min(1, elapsed / COOLDOWN_MS);
+        
+        ctx.save();
+        ctx.translate(LAUNCHER_X, LAUNCHER_Y);
+        
+        // 게이지 배경
+        ctx.beginPath();
+        ctx.arc(0, 0, 30, Math.PI, 0); // 반원
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+
+        // 차오르는 게이지
+        if (progress > 0) {
+            ctx.beginPath();
+            ctx.arc(0, 0, 30, Math.PI, Math.PI + (Math.PI * progress));
+            ctx.strokeStyle = progress >= 1 ? '#2ecc71' : '#e67e22'; // 완료 시 초록색
+            ctx.lineWidth = 6;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    function drawParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            
+            if (p.type === 'levelup') {
+                // 레벨업 특수 텍스트 렌더링
+                p.scale += (1 - p.scale) * 0.1; // 커지는 애니메이션
+                ctx.globalAlpha = Math.max(0, p.life / 90);
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.scale(p.scale, p.scale);
+                ctx.rotate(Math.sin(p.life/5) * 0.1); // 살짝 흔들림
+                ctx.font = '900 48px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 8; ctx.strokeText("LEVEL UP!", 0, 0);
+                
+                // 그라디언트 텍스트
+                let grad = ctx.createLinearGradient(0, -20, 0, 20);
+                grad.addColorStop(0, '#f1c40f'); grad.addColorStop(1, '#e74c3c');
+                ctx.fillStyle = grad; ctx.fillText("LEVEL UP!", 0, 0);
+                ctx.restore();
+                
+            } else {
+                ctx.globalAlpha = Math.max(0, p.life / 50);
+                if (p.type === 'text') {
+                    ctx.fillStyle = p.color; ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center'; ctx.strokeStyle = 'black'; ctx.lineWidth = 3;
+                    ctx.strokeText(p.text, p.x, p.y); ctx.fillText(p.text, p.x, p.y); p.y += p.vy;
+                } else if (p.type === 'confetti') {
+                    ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 8, 8); p.x += p.vx; p.y += p.vy;
+                }
+            }
+            
+            ctx.globalAlpha = 1.0; p.life--; if (p.life <= 0) particles.splice(i, 1);
+        }
+    }
+
+    function gameLoop() {
+        if (!isPlaying) return;
+        if (shakeFrames > 0) {
+            let dx = (Math.random() - 0.5) * 10; let dy = (Math.random() - 0.5) * 10;
+            document.getElementById('game-wrapper').style.transform = `translate(${dx}px, ${dy}px)`; shakeFrames--;
+        } else { document.getElementById('game-wrapper').style.transform = `translate(0px, 0px)`; }
+
+        drawBackground();
+
+        fruits = fruits.filter(f => !f.merged);
+        fruits.sort((a, b) => a.y - b.y);
+        fruits.forEach(f => f.update());
+        resolveCollisions();
+        fruits.forEach(f => f.draw());
+
+        // 쿨타임 게이지 및 대기 과일
+        drawCooldownGauge();
+        ctx.globalAlpha = (Date.now() - lastShootTime >= COOLDOWN_MS) ? 1.0 : 0.3; 
+        new Fruit(LAUNCHER_X, LAUNCHER_Y, 1).draw(); 
+        ctx.globalAlpha = 1.0;
+
+        drawParticles();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function updateTimer() {
+        if (!isPlaying) return;
+        timeLeft--; timerElement.innerText = timeLeft;
+        if (isFever) { feverTimeLeft--; if(feverTimeLeft <= 0) deactivateFever(); }
+        if (timeLeft <= 0) endGame();
+    }
+
+    function startGame() {
+        initAudio(); playBGM();
+        document.getElementById('start-screen').style.display = 'none'; document.getElementById('game-over').style.display = 'none';
+        fruits = []; orders = []; particles = []; envParticles = [];
+        score = 0; combo = 0; timeLeft = 120; storeLevel = 1; lastShootTime = 0; deactivateFever();
+        scoreElement.innerText = score; timerElement.innerText = timeLeft; isPlaying = true;
+        maintainOrders(); window.gameInterval = setInterval(updateTimer, 1000); gameLoop();
+    }
+
+    function endGame() {
+        isPlaying = false; clearInterval(window.gameInterval); stopBGM();
+        if (score > bestScore) { bestScore = score; localStorage.setItem('juiceBestScore', bestScore); }
+        document.getElementById('final-score').innerText = score; document.getElementById('best-score').innerText = bestScore;
+        document.getElementById('game-over').style.display = 'flex'; document.getElementById('game-wrapper').style.transform = `translate(0px, 0px)`;
+    }
+
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+
+    // 초기 화면용
+    drawBackground(); new Fruit(225, 450, 4).draw(); new Fruit(150, 300, 2).draw(); new Fruit(300, 350, 3).draw();
+</script>
+</body>
+</html>
